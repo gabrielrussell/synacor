@@ -1,9 +1,8 @@
-package main
+package vm
 
 import (
 	"encoding/binary"
 	"encoding/gob"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +11,7 @@ import (
 	"time"
 )
 
-var ops = []func(*vM) error{
+var ops = []func(*VM) error{
 	opHalt,
 	opSet,
 	opPush,
@@ -37,33 +36,39 @@ var ops = []func(*vM) error{
 	opNoop,
 }
 
-type vM struct {
+type State struct {
 	Mem       []uint16
 	Registers []uint16
 	Stack     []uint16
 	Ip        uint16
 }
 
-func (vm *vM) saveVM() error {
-	file, err := os.Create(fmt.Sprintf("save-%v", time.Now().Format(time.RFC3339)))
+type VM struct {
+	State
+	Stdout io.Writer
+	Stdin  io.Reader
+}
+
+func (vm *VM) SaveVM(name string) error {
+	file, err := os.Create(fmt.Sprintf("%v-%v", name, time.Now().Format(time.RFC3339)))
 	if err != nil {
 		return err
 	}
 	encoder := gob.NewEncoder(file)
-	return encoder.Encode(vm)
+	return encoder.Encode(vm.State)
 }
 
-func (vm *vM) loadVM(fn string) error {
+func (vm *VM) LoadVM(fn string) error {
 	file, err := os.Open(fn)
 	if err != nil {
-		return err
+		return fmt.Errorf("%v \"%v\"", err, fn)
 	}
 	decoder := gob.NewDecoder(file)
-	return decoder.Decode(vm)
+	return decoder.Decode(&vm.State)
 
 }
 
-func (vm *vM) load(fn string) error {
+func (vm *VM) Load(fn string) error {
 	vm.Registers = make([]uint16, 8)
 	vm.Stack = make([]uint16, 0, 64)
 	vm.Ip = 0
@@ -86,7 +91,7 @@ func (vm *vM) load(fn string) error {
 	return nil
 }
 
-func (vm *vM) value(v uint16) uint16 {
+func (vm *VM) value(v uint16) uint16 {
 	if v <= 32767 {
 		return v
 	}
@@ -96,7 +101,7 @@ func (vm *vM) value(v uint16) uint16 {
 	return vm.Registers[v-32768]
 }
 
-func (vm *vM) dest(d uint16) *uint16 {
+func (vm *VM) dest(d uint16) *uint16 {
 	if d <= 32767 {
 		return &vm.Mem[d]
 	}
@@ -110,27 +115,27 @@ func mod(v uint16) uint16 {
 	return v % 32768
 }
 
-func opHalt(vm *vM) error {
+func opHalt(vm *VM) error {
 	return fmt.Errorf("halt")
 }
 
-func opSet(vm *vM) error {
+func opSet(vm *VM) error {
 	a, b := vm.operand2()
 	vm.Registers[a-32768] = vm.value(b)
 	return nil
 }
-func opPush(vm *vM) error {
+func opPush(vm *VM) error {
 	a := vm.operand()
 	vm.Stack = append(vm.Stack, vm.value(a))
 	return nil
 }
-func opPop(vm *vM) error {
+func opPop(vm *VM) error {
 	a := vm.operand()
 	*vm.dest(a) = vm.Stack[len(vm.Stack)-1]
 	vm.Stack = vm.Stack[:len(vm.Stack)-1]
 	return nil
 }
-func opEq(vm *vM) error {
+func opEq(vm *VM) error {
 	a, b, c := vm.operand3()
 	if vm.value(b) == vm.value(c) {
 		*vm.dest(a) = 1
@@ -139,7 +144,7 @@ func opEq(vm *vM) error {
 	}
 	return nil
 }
-func opGt(vm *vM) error {
+func opGt(vm *VM) error {
 	a, b, c := vm.operand3()
 	if vm.value(b) > vm.value(c) {
 		*vm.dest(a) = 1
@@ -148,72 +153,72 @@ func opGt(vm *vM) error {
 	}
 	return nil
 }
-func opJmp(vm *vM) error {
+func opJmp(vm *VM) error {
 	a := vm.operand()
 	vm.Ip = vm.value(a)
 	return nil
 }
-func opJT(vm *vM) error {
+func opJT(vm *VM) error {
 	a, b := vm.operand2()
 	if vm.value(a) != 0 {
 		vm.Ip = vm.value(b)
 	}
 	return nil
 }
-func opJF(vm *vM) error {
+func opJF(vm *VM) error {
 	a, b := vm.operand2()
 	if vm.value(a) == 0 {
 		vm.Ip = vm.value(b)
 	}
 	return nil
 }
-func opAdd(vm *vM) error {
+func opAdd(vm *VM) error {
 	a, b, c := vm.operand3()
 	*vm.dest(a) = mod(vm.value(b) + vm.value(c))
 	return nil
 }
-func opMult(vm *vM) error {
+func opMult(vm *VM) error {
 	a, b, c := vm.operand3()
 	*vm.dest(a) = mod(vm.value(b) * vm.value(c))
 	return nil
 }
-func opMod(vm *vM) error {
+func opMod(vm *VM) error {
 	a, b, c := vm.operand3()
 	*vm.dest(a) = mod(vm.value(b) % vm.value(c))
 	return nil
 }
-func opAnd(vm *vM) error {
+func opAnd(vm *VM) error {
 	a, b, c := vm.operand3()
 	*vm.dest(a) = (vm.value(b) & vm.value(c)) & 0x7FFF
 	return nil
 }
-func opOr(vm *vM) error {
+func opOr(vm *VM) error {
 	a, b, c := vm.operand3()
 	*vm.dest(a) = (vm.value(b) | vm.value(c)) & 0x7FFF
 	return nil
 }
-func opNot(vm *vM) error {
+func opNot(vm *VM) error {
 	a, b := vm.operand2()
 	*vm.dest(a) = (^vm.value(b)) & 0x7FFF
 	return nil
 }
-func opRMem(vm *vM) error {
+func opRMem(vm *VM) error {
 	a, b := vm.operand2()
 	*vm.dest(a) = vm.Mem[vm.value(b)]
 	return nil
 }
-func opWMem(vm *vM) error {
+func opWMem(vm *VM) error {
 	a, b := vm.operand2()
 	vm.Mem[vm.value(a)] = vm.value(b)
 	return nil
 }
-func opCall(vm *vM) error {
+func opCall(vm *VM) error {
 	a := vm.operand()
 	vm.Stack = append(vm.Stack, vm.Ip)
 	vm.Ip = vm.value(a)
 	return nil
 }
-func opRet(vm *vM) error {
+func opRet(vm *VM) error {
 	if len(vm.Stack) == 0 {
 		return fmt.Errorf("halt")
 	}
@@ -221,19 +226,19 @@ func opRet(vm *vM) error {
 	vm.Stack = vm.Stack[:len(vm.Stack)-1]
 	return nil
 }
-func opOut(vm *vM) error {
+func opOut(vm *VM) error {
 	a := vm.operand()
 	c := vm.value(a)
 	if c > 127 {
 		return fmt.Errorf("bad ascii value %v", c)
 	}
-	fmt.Printf("%v", string([]byte{byte(c)}))
+	fmt.Fprintf(vm.Stdout, "%v", string([]byte{byte(c)}))
 	return nil
 }
-func opIn(vm *vM) error {
+func opIn(vm *VM) error {
 	a := vm.operand()
 	buf := make([]byte, 1)
-	_, err := io.ReadFull(os.Stdin, buf)
+	_, err := io.ReadFull(vm.Stdin, buf)
 	if err != nil {
 		return err
 	}
@@ -241,24 +246,24 @@ func opIn(vm *vM) error {
 	*vm.dest(a) = uint16(buf[0])
 	return nil
 }
-func opNoop(vm *vM) error {
+func opNoop(vm *VM) error {
 	return nil
 }
 
-func (vm *vM) operand() uint16 {
+func (vm *VM) operand() uint16 {
 	v := vm.Mem[vm.Ip]
 	vm.Ip++
 	return v
 }
 
-func (vm *vM) operand2() (uint16, uint16) {
+func (vm *VM) operand2() (uint16, uint16) {
 	return vm.operand(), vm.operand()
 }
-func (vm *vM) operand3() (uint16, uint16, uint16) {
+func (vm *VM) operand3() (uint16, uint16, uint16) {
 	return vm.operand(), vm.operand(), vm.operand()
 }
 
-func (vm *vM) run() error {
+func (vm *VM) Run() error {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGUSR1)
 	for {
@@ -273,35 +278,9 @@ func (vm *vM) run() error {
 		}
 		select {
 		case <-sigChan:
-			vm.saveVM()
+			vm.SaveVM("autosave")
 		default:
 		}
 
-	}
-}
-
-func main() {
-
-	savedGame := flag.Bool("save", false, "load a saved vm instead of the program")
-	flag.Parse()
-	vm := &vM{}
-	fmt.Fprintf(os.Stderr, "flags %v\n", flag.Args())
-	if len(flag.Args()) != 1 {
-		fmt.Printf("usage vm <program.bin>\n")
-		os.Exit(1)
-	}
-	var err error
-	if *savedGame {
-		err = vm.loadVM(flag.Arg(0))
-	} else {
-		err = vm.load(flag.Arg(0))
-	}
-	if err != nil {
-		fmt.Printf("load failed %v", err)
-	}
-	err = vm.run()
-	if err != nil {
-		fmt.Printf("program error %v", err)
-		os.Exit(2)
 	}
 }
