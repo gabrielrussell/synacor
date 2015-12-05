@@ -45,8 +45,12 @@ type State struct {
 
 type VM struct {
 	State
-	Stdout io.Writer
-	Stdin  io.Reader
+	Step        bool
+	StepChan    chan interface{}
+	SaveOnEOF   bool
+	breakpoints []int16
+	Stdout      io.Writer
+	Stdin       io.Reader
 }
 
 func (vm *VM) SaveVM(name string) error {
@@ -264,14 +268,22 @@ func (vm *VM) operand3() (uint16, uint16, uint16) {
 }
 
 func (vm *VM) Run() error {
-	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGUSR1)
 	for {
+		opIp := vm.Ip
+		if vm.Step {
+			<-vm.StepChan
+		}
 		op := vm.operand()
 		err := ops[op](vm)
 		if err != nil {
 			if err.Error() == "halt" {
 				return nil
+			} else if err == io.EOF {
+				if vm.SaveOnEOF {
+					vm.Ip = opIp
+					vm.SaveVM("EOF")
+				}
 			} else {
 				return err
 			}
