@@ -9,7 +9,7 @@ func (vm *VM) Dis(p uint16, n int) []string {
 	for j := 0; j < n; j++ {
 		s := fmt.Sprintf("%8d ", p)
 		dop, _ := vm.Decode(&p)
-		s += dop.name
+		s += dop.Name
 		for k := 0; k < len(dop.ArgsDescription); k++ {
 			s += ", " + dop.ArgsDescription[k]
 		}

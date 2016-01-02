@@ -13,34 +13,34 @@ import (
 )
 
 type Op struct {
-	nFunction func(*VM, []*uint16) error
-	name      string
-	args      string
+	Function func(*VM, []*uint16) error
+	Name     string
+	Args     string
 }
 
 var Ops = []Op{
-	{nOpHalt, opHalt, "Halt", ""},
-	{nOpSet, opSet, "Set", "LR"},
-	{nOpPush, opPush, "Push", "R"},
-	{nOpPop, opPop, "Pop", "L"},
-	{nOpEq, opEq, "Eq", "LRR"},
-	{nOpGt, opGt, "Gt", "LRR"},
-	{nOpJmp, opJmp, "Jmp", "R"},
-	{nOpJT, opJT, "JT", "RR"},
-	{nOpJF, opJF, "JF", "RR"},
-	{nOpAdd, opAdd, "Add", "LRR"},
-	{nOpMult, opMult, "Mult", "LRR"},
-	{nOpMod, opMod, "Mod", "LRR"},
-	{nOpAnd, opAnd, "And", "LRR"},
-	{nOpOr, opOr, "Or", "LRR"},
-	{nOpNot, opNot, "Not", "LR"},
-	{nOpRMem, opRMem, "RMem", "LR"},
-	{nOpWMem, opWMem, "WMem", "RR"},
-	{nOpCall, opCall, "Call", "R"},
-	{nOpRet, opRet, "Ret", ""},
-	{nOpOut, opOut, "Out", "R"},
-	{nOpIn, opIn, "In", "R"},
-	{nOpNoop, opNoop, "Noop", ""},
+	{OpHalt, "Halt", ""},
+	{OpSet, "Set", "LR"},
+	{OpPush, "Push", "R"},
+	{OpPop, "Pop", "L"},
+	{OpEq, "Eq", "LRR"},
+	{OpGt, "Gt", "LRR"},
+	{OpJmp, "Jmp", "R"},
+	{OpJT, "JT", "RR"},
+	{OpJF, "JF", "RR"},
+	{OpAdd, "Add", "LRR"},
+	{OpMult, "Mult", "LRR"},
+	{OpMod, "Mod", "LRR"},
+	{OpAnd, "And", "LRR"},
+	{OpOr, "Or", "LRR"},
+	{OpNot, "Not", "LR"},
+	{OpRMem, "RMem", "LR"},
+	{OpWMem, "WMem", "RR"},
+	{OpCall, "Call", "R"},
+	{OpRet, "Ret", ""},
+	{OpOut, "Out", "R"},
+	{OpIn, "In", "R"},
+	{OpNoop, "Noop", ""},
 }
 
 type State struct {
@@ -175,46 +175,26 @@ func mod(v uint16) uint16 {
 	return v % 32768
 }
 
-func nOpHalt(vm *VM, a []*uint16) error {
+func OpHalt(vm *VM, a []*uint16) error {
 	return fmt.Errorf("halt")
 }
 
-func opHalt(vm *VM) error {
-	return fmt.Errorf("halt")
-}
-
-func nOpSet(vm *VM, a []*uint16) error {
+func OpSet(vm *VM, a []*uint16) error {
 	*a[0] = *a[1]
 	return nil
 }
 
-func opSet(vm *VM) error {
-	a, b := vm.operand2()
-	vm.Registers[a-32768] = vm.value(b)
-	return nil
-}
-func nOpPush(vm *VM, a []*uint16) error {
+func OpPush(vm *VM, a []*uint16) error {
 	vm.Stack = append(vm.Stack, *a[0])
 	return nil
 }
-func opPush(vm *VM) error {
-	a := vm.operand()
-	vm.Stack = append(vm.Stack, vm.value(a))
-	return nil
-}
-func nOpPop(vm *VM, a []*uint16) error {
+func OpPop(vm *VM, a []*uint16) error {
 	*a[0] = vm.Stack[len(vm.Stack)-1]
 	vm.Stack = vm.Stack[:len(vm.Stack)-1]
 	return nil
 }
-func opPop(vm *VM) error {
-	a := vm.operand()
-	*vm.dest(a) = vm.Stack[len(vm.Stack)-1]
-	vm.Stack = vm.Stack[:len(vm.Stack)-1]
-	return nil
-}
 
-func nOpEq(vm *VM, a []*uint16) error {
+func OpEq(vm *VM, a []*uint16) error {
 	if *a[1] == *a[2] {
 		*a[0] = 1
 	} else {
@@ -223,17 +203,7 @@ func nOpEq(vm *VM, a []*uint16) error {
 	return nil
 }
 
-func opEq(vm *VM) error {
-	a, b, c := vm.operand3()
-	if vm.value(b) == vm.value(c) {
-		*vm.dest(a) = 1
-	} else {
-		*vm.dest(a) = 0
-	}
-	return nil
-}
-
-func nOpGt(vm *VM, a []*uint16) error {
+func OpGt(vm *VM, a []*uint16) error {
 	if *a[1] > *a[2] {
 		*a[0] = 1
 	} else {
@@ -242,153 +212,73 @@ func nOpGt(vm *VM, a []*uint16) error {
 	return nil
 }
 
-func opGt(vm *VM) error {
-	a, b, c := vm.operand3()
-	if vm.value(b) > vm.value(c) {
-		*vm.dest(a) = 1
-	} else {
-		*vm.dest(a) = 0
-	}
-	return nil
-}
-
-func nOpJmp(vm *VM, a []*uint16) error {
+func OpJmp(vm *VM, a []*uint16) error {
 	vm.Ip = *a[0]
 	return nil
 }
-func opJmp(vm *VM) error {
-	a := vm.operand()
-	vm.Ip = vm.value(a)
-	return nil
-}
-func nOpJT(vm *VM, a []*uint16) error {
+
+func OpJT(vm *VM, a []*uint16) error {
 	if *a[0] != 0 {
 		vm.Ip = *a[1]
 	}
 	return nil
 }
-func opJT(vm *VM) error {
-	a, b := vm.operand2()
-	if vm.value(a) != 0 {
-		vm.Ip = vm.value(b)
-	}
-	return nil
-}
 
-func nOpJF(vm *VM, a []*uint16) error {
+func OpJF(vm *VM, a []*uint16) error {
 	if *a[0] == 0 {
 		vm.Ip = *a[1]
 	}
 	return nil
 }
 
-func opJF(vm *VM) error {
-	a, b := vm.operand2()
-	if vm.value(a) == 0 {
-		vm.Ip = vm.value(b)
-	}
-	return nil
-}
-
-func nOpAdd(vm *VM, a []*uint16) error {
+func OpAdd(vm *VM, a []*uint16) error {
 	*a[0] = mod(*a[1] + *a[2])
 	return nil
 }
 
-func opAdd(vm *VM) error {
-	a, b, c := vm.operand3()
-	*vm.dest(a) = mod(vm.value(b) + vm.value(c))
-	return nil
-}
-
-func nOpMult(vm *VM, a []*uint16) error {
+func OpMult(vm *VM, a []*uint16) error {
 	*a[0] = mod(*a[1] * *a[2])
 	return nil
 }
 
-func opMult(vm *VM) error {
-	a, b, c := vm.operand3()
-	*vm.dest(a) = mod(vm.value(b) * vm.value(c))
-	return nil
-}
-
-func nOpMod(vm *VM, a []*uint16) error {
+func OpMod(vm *VM, a []*uint16) error {
 	*a[0] = mod(*a[1] % *a[2])
 	return nil
 }
 
-func opMod(vm *VM) error {
-	a, b, c := vm.operand3()
-	*vm.dest(a) = mod(vm.value(b) % vm.value(c))
-	return nil
-}
-
-func nOpAnd(vm *VM, a []*uint16) error {
+func OpAnd(vm *VM, a []*uint16) error {
 	*a[0] = (*a[1] & *a[2]) & 0x7FFF
 	return nil
 }
 
-func opAnd(vm *VM) error {
-	a, b, c := vm.operand3()
-	*vm.dest(a) = (vm.value(b) & vm.value(c)) & 0x7FFF
-	return nil
-}
-
-func nOpOr(vm *VM, a []*uint16) error {
+func OpOr(vm *VM, a []*uint16) error {
 	*a[0] = (*a[1] | *a[2]) & 0x7FFF
 	return nil
 }
 
-func opOr(vm *VM) error {
-	a, b, c := vm.operand3()
-	*vm.dest(a) = (vm.value(b) | vm.value(c)) & 0x7FFF
-	return nil
-}
-func nOpNot(vm *VM, a []*uint16) error {
+func OpNot(vm *VM, a []*uint16) error {
 	*a[0] = (^*a[1]) & 0x7FFF
 	return nil
 }
-func opNot(vm *VM) error {
-	a, b := vm.operand2()
-	*vm.dest(a) = (^vm.value(b)) & 0x7FFF
-	return nil
-}
 
-func opRMem(vm *VM) error {
-	a, b := vm.operand2()
-	*vm.dest(a) = vm.Mem[vm.value(b)]
-	return nil
-}
-
-func nOpRMem(vm *VM, a []*uint16) error {
+func OpRMem(vm *VM, a []*uint16) error {
 	*a[0] = vm.Mem[*a[1]]
 	return nil
 }
-func opWMem(vm *VM) error {
-	a, b := vm.operand2()
-	vm.Mem[vm.value(a)] = vm.value(b)
-	return nil
-}
-func nOpWMem(vm *VM, a []*uint16) error {
+
+func OpWMem(vm *VM, a []*uint16) error {
 	vm.WriteMem[*a[0]] = true
 	vm.Mem[*a[0]] = *a[1]
 	return nil
 }
 
-func opCall(vm *VM) error {
-	a := vm.operand()
-	vm.Stack = append(vm.Stack, vm.Ip)
-	vm.Ip = vm.value(a)
-	return nil
-}
-
-func nOpCall(vm *VM, a []*uint16) error {
+func OpCall(vm *VM, a []*uint16) error {
 	vm.Stack = append(vm.Stack, vm.Ip)
 	vm.Ip = *a[0]
 	return nil
 }
 
-func nOpRet(vm *VM, a []*uint16) error {
+func OpRet(vm *VM, a []*uint16) error {
 	if len(vm.Stack) == 0 {
 		return fmt.Errorf("halt")
 	}
@@ -397,31 +287,12 @@ func nOpRet(vm *VM, a []*uint16) error {
 	return nil
 }
 
-func opRet(vm *VM) error {
-	if len(vm.Stack) == 0 {
-		return fmt.Errorf("halt")
-	}
-	vm.Ip = vm.Stack[len(vm.Stack)-1]
-	vm.Stack = vm.Stack[:len(vm.Stack)-1]
-	return nil
-}
-
-func opOut(vm *VM) error {
-	a := vm.operand()
-	c := vm.value(a)
-	if c > 127 {
-		return fmt.Errorf("bad ascii value %v", c)
-	}
-	fmt.Fprintf(vm.Stdout, "%v", string([]byte{byte(c)}))
-	return nil
-}
-
-func nOpOut(vm *VM, a []*uint16) error {
+func OpOut(vm *VM, a []*uint16) error {
 	fmt.Fprintf(vm.Stdout, "%v", string([]byte{byte(*a[0])}))
 	return nil
 }
 
-func nOpIn(vm *VM, a []*uint16) error {
+func OpIn(vm *VM, a []*uint16) error {
 	buf := make([]byte, 1)
 	_, err := io.ReadFull(vm.Stdin, buf)
 	if err != nil {
@@ -431,23 +302,7 @@ func nOpIn(vm *VM, a []*uint16) error {
 	return nil
 }
 
-func opIn(vm *VM) error {
-	a := vm.operand()
-	buf := make([]byte, 1)
-	_, err := io.ReadFull(vm.Stdin, buf)
-	if err != nil {
-		return err
-	}
-	//fmt.Printf("%v", string(buf))
-	*vm.dest(a) = uint16(buf[0])
-	return nil
-}
-
-func nOpNoop(vm *VM, a []*uint16) error {
-	return nil
-}
-
-func opNoop(vm *VM) error {
+func OpNoop(vm *VM, a []*uint16) error {
 	return nil
 }
 
@@ -491,7 +346,7 @@ func (vm *VM) Decode(p *uint16) (*decodedOp, error) {
 		return nil, fmt.Errorf("op %v at %v is out of range", o, *p)
 	}
 	dop.Op = Ops[o]
-	for _, arg := range dop.Op.args {
+	for _, arg := range dop.Op.Args {
 		var v *uint16
 		var d string
 		m := vm.Mem[*p]
@@ -501,14 +356,14 @@ func (vm *VM) Decode(p *uint16) (*decodedOp, error) {
 		if arg == 'R' {
 			if m <= 32767 {
 				v = &vm.Mem[*p]
-				if dop.Op.name == "Out" {
+				if dop.Op.Name == "Out" {
 					d = fmt.Sprintf("%c(*%v)", vm.Mem[*p], *p)
 				} else {
 					d = fmt.Sprintf("%v(*%v)", vm.Mem[*p], *p)
 				}
 			} else {
 				v = &vm.Registers[m-32768]
-				if dop.Op.name == "Out" {
+				if dop.Op.Name == "Out" {
 					d = fmt.Sprintf("%c(R%v)", vm.Registers[m-32768], m-32768)
 				} else {
 					d = fmt.Sprintf("%v(R%v)", vm.Registers[m-32768], m-32768)
@@ -542,16 +397,14 @@ func (vm *VM) Run() {
 	for {
 		vm.Counter++
 		opIp := vm.Ip
-		decodeIp := vm.Ip
 		var err error
-		dOp, err := vm.Decode(&decodeIp)
+		dOp, err := vm.Decode(&vm.Ip)
 		if err != nil {
 			vm.ControlChan <- err.Error()
 			<-vm.ControlChan
 			return
 		}
-		vm.Ip = decodeIp
-		err = dOp.nFunction(vm, dOp.Args)
+		err = dOp.Function(vm, dOp.Args)
 		if err != nil {
 			if err.Error() == "halt" {
 				vm.ControlChan <- "halt"
