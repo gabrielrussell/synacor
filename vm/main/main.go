@@ -34,6 +34,8 @@ func main() {
 		SaveOnEOF:    *saveOnEOF,
 		Debugging:    *debug,
 		ControlChan:  make(chan string),
+		BreakOps:     make(map[uint16]bool),
+		Break:        make(map[uint16]bool),
 		MetadataFile: *metadataFile,
 	}
 	fmt.Fprintf(os.Stderr, "flags %v\n", flag.Args())

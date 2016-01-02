@@ -47,6 +47,7 @@ type State struct {
 	Mem       []uint16
 	Registers []uint16
 	Stack     []uint16
+	CallStack []uint16
 	Ip        uint16
 }
 
@@ -64,7 +65,8 @@ type VM struct {
 	MetadataFile string
 	ControlChan  chan string
 	SaveOnEOF    bool
-	Breakpoints  map[uint16]bool
+	Break        map[uint16]bool
+	BreakOps     map[uint16]bool
 	Step         bool
 	Stdout       io.Writer
 	Stdin        *bufio.Reader
@@ -109,10 +111,12 @@ func (vm *VM) LoadMetadata() error {
 }
 
 func (vm *VM) SaveVM(name string) error {
-	file, err := os.Create(fmt.Sprintf("%v-%v", name, time.Now().Format(time.RFC3339)))
+	fn := fmt.Sprintf("%v-%v", name, time.Now().Format(time.RFC3339))
+	file, err := os.Create(fn)
 	if err != nil {
 		return err
 	}
+	vm.Printf("saving to %v", fn)
 	encoder := gob.NewEncoder(file)
 	return encoder.Encode(vm.State)
 }
@@ -273,6 +277,7 @@ func OpWMem(vm *VM, a []*uint16) error {
 }
 
 func OpCall(vm *VM, a []*uint16) error {
+	vm.CallStack = append(vm.CallStack, *a[0], vm.Ip-2)
 	vm.Stack = append(vm.Stack, vm.Ip)
 	vm.Ip = *a[0]
 	return nil
@@ -284,6 +289,9 @@ func OpRet(vm *VM, a []*uint16) error {
 	}
 	vm.Ip = vm.Stack[len(vm.Stack)-1]
 	vm.Stack = vm.Stack[:len(vm.Stack)-1]
+	if len(vm.CallStack) > 0 {
+		vm.CallStack = vm.CallStack[:len(vm.CallStack)-2]
+	}
 	return nil
 }
 
@@ -320,9 +328,9 @@ func (vm *VM) operand3() (uint16, uint16, uint16) {
 }
 
 func (vm *VM) Start() {
-	fmt.Printf("Recieved state\n")
+	vm.Printf("Recieved state\n")
 	<-vm.ControlChan
-	fmt.Printf("signaling ready\n")
+	vm.Printf("signaling ready\n")
 	vm.ControlChan <- ""
 }
 
@@ -334,55 +342,74 @@ func (vm *VM) Finish() error {
 
 type decodedOp struct {
 	Op
+	Code            uint16
 	Args            []*uint16
 	ArgsDescription []string
+	Annotation      string
+	isFunction      bool
 }
 
-func (vm *VM) Decode(p *uint16) (*decodedOp, error) {
+func (vm *VM) Decode(p *uint16, verbose bool) (*decodedOp, bool) {
 	var dop decodedOp
+	if int(*p) >= len(vm.Mem) {
+		return &dop, false
+	}
 	o := vm.Mem[*p]
+	dop.Annotation = vm.Annotations[*p]
+	dop.isFunction = vm.Functions[*p]
+	dop.Code = o
 	*p++
 	if o > uint16(len(Ops)) {
-		return nil, fmt.Errorf("op %v at %v is out of range", o, *p)
+		return &dop, false
 	}
 	dop.Op = Ops[o]
 	for _, arg := range dop.Op.Args {
 		var v *uint16
 		var d string
-		m := vm.Mem[*p]
-		if m >= 32776 {
-			return nil, fmt.Errorf("op value %v at %v out of range", m, *p)
+		m := &vm.Mem[*p]
+		if *m >= 32776 {
+			return &dop, false
 		}
 		if arg == 'R' {
-			if m <= 32767 {
-				v = &vm.Mem[*p]
-				if dop.Op.Name == "Out" {
-					d = fmt.Sprintf("%c(*%v)", vm.Mem[*p], *p)
-				} else {
-					d = fmt.Sprintf("%v(*%v)", vm.Mem[*p], *p)
+			if *m <= 32767 {
+				v = m
+				if verbose {
+					if dop.Op.Name == "Out" {
+						d = fmt.Sprintf("%c", *v)
+					} else {
+						d = fmt.Sprintf("%v", *v)
+					}
 				}
 			} else {
-				v = &vm.Registers[m-32768]
-				if dop.Op.Name == "Out" {
-					d = fmt.Sprintf("%c(R%v)", vm.Registers[m-32768], m-32768)
-				} else {
-					d = fmt.Sprintf("%v(R%v)", vm.Registers[m-32768], m-32768)
+				v = &vm.Registers[*m-32768]
+				if verbose {
+					if dop.Op.Name == "Out" {
+						d = fmt.Sprintf("%c(R%v)", vm.Registers[*m-32768], *m-32768)
+					} else {
+						d = fmt.Sprintf("%v(R%v)", vm.Registers[*m-32768], *m-32768)
+					}
 				}
 			}
 		} else {
-			if m <= 32767 {
-				v = &vm.Mem[m]
-				d = fmt.Sprintf("*%v", *p)
+			if *m <= 32767 {
+				v = &vm.Mem[*m]
+				if verbose {
+					d = fmt.Sprintf("*%v", *m)
+				}
 			} else {
-				v = &vm.Registers[m-32768]
-				d = fmt.Sprintf("R%v", m-32768)
+				v = &vm.Registers[*m-32768]
+				if verbose {
+					d = fmt.Sprintf("R%v", *m-32768)
+				}
 			}
 		}
 		dop.Args = append(dop.Args, v)
-		dop.ArgsDescription = append(dop.ArgsDescription, d)
+		if verbose {
+			dop.ArgsDescription = append(dop.ArgsDescription, d)
+		}
 		*p++
 	}
-	return &dop, nil
+	return &dop, true
 }
 
 func (vm *VM) Run() {
@@ -398,9 +425,16 @@ func (vm *VM) Run() {
 		vm.Counter++
 		opIp := vm.Ip
 		var err error
-		dOp, err := vm.Decode(&vm.Ip)
-		if err != nil {
-			vm.ControlChan <- err.Error()
+		if vm.BreakOps[vm.Mem[vm.Ip]] || vm.Step || vm.Break[vm.Ip] {
+			vm.ControlChan <- "break"
+			_, ok := <-vm.ControlChan
+			if !ok {
+				return
+			}
+		}
+		dOp, good := vm.Decode(&vm.Ip, false)
+		if !good {
+			vm.ControlChan <- fmt.Sprintf("bad op %v at %v", dOp.Code, opIp)
 			<-vm.ControlChan
 			return
 		}
@@ -411,6 +445,11 @@ func (vm *VM) Run() {
 				<-vm.ControlChan
 				return
 			} else if err == io.EOF {
+				if vm.Debugging {
+					vm.Ip = opIp
+					vm.Step = true
+					continue
+				}
 				if vm.SaveOnEOF {
 					vm.Ip = opIp
 					vm.SaveVM("EOF")
@@ -424,16 +463,9 @@ func (vm *VM) Run() {
 				return
 			}
 		}
-		if vm.Step || vm.Breakpoints[vm.Ip] {
-			vm.ControlChan <- "break"
-			_, ok := <-vm.ControlChan
-			if !ok {
-				return
-			}
-		}
 	}
 }
 
 func (vm *VM) Printf(format string, a ...interface{}) (int, error) {
-	return fmt.Fprintf(vm.Stdout, format, a)
+	return fmt.Fprintf(vm.Stdout, format, a...)
 }
