@@ -8,6 +8,9 @@ import (
 )
 
 func (vm *VM) Debug() error {
+	var fields []string
+	var repeat int
+	var lastLine string
 	for {
 		state := <-vm.ControlChan
 		if state != "break" {
@@ -16,7 +19,6 @@ func (vm *VM) Debug() error {
 		}
 		dis := vm.Dis(vm.Ip, 1)
 		vm.Printf("%v\n", dis[0])
-
 	replLoop:
 		for {
 			vm.Printf("DBG> ")
@@ -24,7 +26,13 @@ func (vm *VM) Debug() error {
 			if err != nil {
 				return err
 			}
-			fields := regexp.MustCompile(`\s`).Split(strings.TrimSpace(line), -1)
+			if len(line) == 1 && len(lastLine) > 0 {
+				repeat++
+			} else {
+				repeat = 0
+				fields = regexp.MustCompile(`\s`).Split(strings.TrimSpace(line), -1)
+				lastLine = line
+			}
 			switch fields[0] {
 			case "s":
 				vm.Step = true
@@ -34,7 +42,7 @@ func (vm *VM) Debug() error {
 				break replLoop
 			case "d":
 				p := vm.Ip
-				l := 16
+				l := 32
 				var err error
 				if len(fields) >= 3 {
 					l, err = strconv.Atoi(fields[2])
@@ -48,6 +56,7 @@ func (vm *VM) Debug() error {
 					vm.Printf("d [<start> [<length>]\n")
 					continue replLoop
 				}
+				p += uint16(l * repeat)
 				vm.Printf("disassemble\n")
 				dis := vm.Dis(p, l)
 				for _, d := range dis {

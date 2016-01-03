@@ -7,7 +7,8 @@ import (
 
 func (vm *VM) Dis(p uint16, n int) []string {
 	var dis []string
-	for j := 0; j < n; j++ {
+	start := p
+	for p < start+uint16(n) {
 		s := fmt.Sprintf("%8d ", p)
 		dop, good := vm.Decode(&p, true)
 		var chars [4]byte

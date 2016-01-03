@@ -360,7 +360,7 @@ func (vm *VM) Decode(p *uint16, verbose bool) (*decodedOp, bool) {
 	dop.isFunction = vm.Functions[*p]
 	dop.Codes = append(dop.Codes, o)
 	*p++
-	if o > uint16(len(Ops)) {
+	if o >= uint16(len(Ops)) {
 		return &dop, false
 	}
 	dop.Op = Ops[o]
