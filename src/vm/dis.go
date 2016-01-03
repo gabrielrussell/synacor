@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"strconv"
 )
 
 func (vm *VM) Dis(p uint16, n int) []string {
@@ -9,11 +10,23 @@ func (vm *VM) Dis(p uint16, n int) []string {
 	for j := 0; j < n; j++ {
 		s := fmt.Sprintf("%8d ", p)
 		dop, good := vm.Decode(&p, true)
-		printChar := rune(dop.Code)
-		if dop.Code < 32 || dop.Code > 127 {
-			printChar = ' '
+		var chars [4]byte
+		var values string
+		for i := 0; i < 4; i++ {
+			if i < len(dop.Codes) {
+				if len(values) > 0 {
+					values += ","
+				}
+				values += strconv.Itoa(int(dop.Codes[i]))
+			}
+			if i >= len(dop.Codes) || dop.Codes[i] < 32 || dop.Codes[i] > 127 {
+				chars[i] = ' '
+			} else {
+				chars[i] = byte(dop.Codes[i])
+
+			}
 		}
-		s += fmt.Sprintf("%2x %c ", dop.Code, printChar)
+		s += fmt.Sprintf("%25v '%v' ", values, string(chars[:]))
 		if good {
 			if dop.isFunction {
 				s += "* "

@@ -342,7 +342,7 @@ func (vm *VM) Finish() error {
 
 type decodedOp struct {
 	Op
-	Code            uint16
+	Codes           []uint16
 	Args            []*uint16
 	ArgsDescription []string
 	Annotation      string
@@ -354,10 +354,11 @@ func (vm *VM) Decode(p *uint16, verbose bool) (*decodedOp, bool) {
 	if int(*p) >= len(vm.Mem) {
 		return &dop, false
 	}
+	//start := *p
 	o := vm.Mem[*p]
 	dop.Annotation = vm.Annotations[*p]
 	dop.isFunction = vm.Functions[*p]
-	dop.Code = o
+	dop.Codes = append(dop.Codes, o)
 	*p++
 	if o > uint16(len(Ops)) {
 		return &dop, false
@@ -367,6 +368,7 @@ func (vm *VM) Decode(p *uint16, verbose bool) (*decodedOp, bool) {
 		var v *uint16
 		var d string
 		m := &vm.Mem[*p]
+		dop.Codes = append(dop.Codes, *m)
 		if *m >= 32776 {
 			return &dop, false
 		}
@@ -434,7 +436,7 @@ func (vm *VM) Run() {
 		}
 		dOp, good := vm.Decode(&vm.Ip, false)
 		if !good {
-			vm.ControlChan <- fmt.Sprintf("bad op %v at %v", dOp.Code, opIp)
+			vm.ControlChan <- fmt.Sprintf("bad op %v at %v", dOp.Codes[0], opIp)
 			<-vm.ControlChan
 			return
 		}

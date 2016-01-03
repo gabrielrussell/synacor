@@ -110,7 +110,6 @@ func (vm *VM) Debug() error {
 				vm.Annotations[uint16(p)] = strings.Join(fields[2:], " ")
 				dis := vm.Dis(uint16(p), 1)
 				vm.Printf("%v\n", dis[0])
-				vm.Printf("%#v\n", vm.Annotations)
 			case "bt":
 				for i := 0; i < len(vm.CallStack); i += 2 {
 					vm.Printf("call %v, from %v\n", vm.CallStack[i], vm.CallStack[i+1])
