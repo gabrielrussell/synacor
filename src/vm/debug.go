@@ -7,6 +7,18 @@ import (
 	"strings"
 )
 
+func (vm *VM) R() string {
+	s := []string{}
+	for i, r := range vm.Registers {
+		s = append(s, fmt.Sprintf("R%v: %5v", i, strconv.Itoa(int(r))))
+	}
+	s = append(s, fmt.Sprintf("IP: %5v", strconv.Itoa(int(vm.Ip))))
+	if len(vm.Stack) > 0 {
+		s = append(s, fmt.Sprintf("S%v: %5v", len(vm.Stack)-1, strconv.Itoa(int(vm.Stack[len(vm.Stack)-1]))))
+	}
+	return strings.Join(s, ", ")
+}
+
 func (vm *VM) Debug() error {
 	var fields []string
 	var repeat int
@@ -18,7 +30,7 @@ func (vm *VM) Debug() error {
 			return fmt.Errorf("%s", state)
 		}
 		dis := vm.Dis(vm.Ip, 1)
-		vm.Printf("%v\n", dis[0])
+		vm.Printf("%v\n%v\n", dis[0], vm.R())
 	replLoop:
 		for {
 			vm.Printf("DBG> ")
@@ -116,12 +128,71 @@ func (vm *VM) Debug() error {
 					vm.Printf("ann <addr> <note>\n%v\n", err)
 					continue replLoop
 				}
-				vm.Annotations[uint16(p)] = strings.Join(fields[2:], " ")
+				vm.meta.Annotations[uint16(p)] = strings.Join(fields[2:], " ")
 				dis := vm.Dis(uint16(p), 1)
 				vm.Printf("%v\n", dis[0])
 			case "bt":
 				for i := 0; i < len(vm.CallStack); i += 2 {
 					vm.Printf("call %v, from %v\n", vm.CallStack[i], vm.CallStack[i+1])
+
+				}
+			case "save":
+				if len(fields) != 2 {
+					vm.Printf("save <filename>\n")
+					continue replLoop
+				}
+				err := vm.SaveVM(fields[1])
+				if err != nil {
+					vm.Printf("%v\n", err)
+				}
+			case "r":
+				if len(fields) != 3 {
+					vm.Printf("r <number> <value>\n")
+					continue replLoop
+				}
+				r, err := strconv.Atoi(fields[1])
+				if err != nil || r < 0 || r > 7 {
+					vm.Printf("r <0-7> <value>\n")
+					continue replLoop
+				}
+				v, err := strconv.Atoi(fields[2])
+				if err != nil {
+					vm.Printf("r <number> <value>\n")
+					continue replLoop
+				}
+				vm.Registers[r] = uint16(v)
+				dis := vm.Dis(vm.Ip, 1)
+				vm.Printf("%v\n%v\n", dis[0], vm.R())
+			case "string":
+				if len(fields) != 2 {
+					vm.Printf("string <address>\n")
+				}
+				p, err := strconv.Atoi(fields[1])
+				if err != nil {
+					vm.Printf("string <address>\n")
+					continue replLoop
+				}
+				vm.Printf("%v\n", vm.String(uint16(p)))
+			case "l", "look":
+				if len(fields) != 2 {
+					vm.Printf("l <address>\n")
+					continue replLoop
+				}
+				pInt, err := strconv.Atoi(fields[1])
+				if err != nil {
+					vm.Printf("l <address>\n")
+					continue replLoop
+				}
+				p := uint16(pInt)
+				found := 0
+				for i := uint16(0); i < uint16(len(vm.Mem)); i++ {
+					if vm.Mem[i] == p {
+						vm.Printf("%v\n", i)
+						found++
+						if found > 100 {
+							break
+						}
+					}
 
 				}
 			default:

@@ -61,7 +61,7 @@ type Metadata struct {
 
 type VM struct {
 	State
-	Metadata
+	meta         Metadata
 	MetadataFile string
 	ControlChan  chan string
 	SaveOnEOF    bool
@@ -75,37 +75,38 @@ type VM struct {
 }
 
 func (vm *VM) SaveMetadata() error {
+	vm.Printf("saving metadata\n")
 	file, err := os.Create(vm.MetadataFile)
 	if err != nil {
 		return err
 	}
 	encoder := gob.NewEncoder(file)
-	return encoder.Encode(vm.Metadata)
+	return encoder.Encode(vm.meta)
 }
 
 func (vm *VM) LoadMetadata() error {
 	file, err := os.Open(vm.MetadataFile)
 	if err == nil {
 		decoder := gob.NewDecoder(file)
-		err = decoder.Decode(&vm.Metadata)
+		err = decoder.Decode(&vm.meta)
 	}
-	if len(vm.Metadata.ReadMem) < len(vm.Mem) {
+	if len(vm.meta.ReadMem) < len(vm.Mem) {
 		fmt.Printf("initilazing metadata\n")
 		rMem := make([]bool, len(vm.Mem))
-		copy(rMem, vm.ReadMem)
-		vm.ReadMem = rMem
+		copy(rMem, vm.meta.ReadMem)
+		vm.meta.ReadMem = rMem
 		wMem := make([]bool, len(vm.Mem))
-		copy(wMem, vm.ReadMem)
-		vm.WriteMem = wMem
+		copy(wMem, vm.meta.ReadMem)
+		vm.meta.WriteMem = wMem
 		eMem := make([]bool, len(vm.Mem))
-		copy(eMem, vm.ExecMem)
-		vm.ExecMem = eMem
+		copy(eMem, vm.meta.ExecMem)
+		vm.meta.ExecMem = eMem
 	}
-	if vm.Metadata.Functions == nil {
-		vm.Metadata.Functions = make(map[uint16]bool)
+	if vm.meta.Functions == nil {
+		vm.meta.Functions = make(map[uint16]bool)
 	}
-	if vm.Metadata.Annotations == nil {
-		vm.Metadata.Annotations = make(map[uint16]string)
+	if vm.meta.Annotations == nil {
+		vm.meta.Annotations = make(map[uint16]string)
 	}
 	return nil
 }
@@ -116,7 +117,7 @@ func (vm *VM) SaveVM(name string) error {
 	if err != nil {
 		return err
 	}
-	vm.Printf("saving to %v", fn)
+	vm.Printf("saving to %v\n", fn)
 	encoder := gob.NewEncoder(file)
 	return encoder.Encode(vm.State)
 }
@@ -166,7 +167,7 @@ func (vm *VM) value(v uint16) uint16 {
 
 func (vm *VM) dest(d uint16) *uint16 {
 	if d <= 32767 {
-		vm.WriteMem[d] = true
+		vm.meta.WriteMem[d] = true
 		return &vm.Mem[d]
 	}
 	if d >= 32776 {
@@ -271,12 +272,13 @@ func OpRMem(vm *VM, a []*uint16) error {
 }
 
 func OpWMem(vm *VM, a []*uint16) error {
-	vm.WriteMem[*a[0]] = true
+	vm.meta.WriteMem[*a[0]] = true
 	vm.Mem[*a[0]] = *a[1]
 	return nil
 }
 
 func OpCall(vm *VM, a []*uint16) error {
+	vm.meta.Functions[*a[0]] = true
 	vm.CallStack = append(vm.CallStack, *a[0], vm.Ip-2)
 	vm.Stack = append(vm.Stack, vm.Ip)
 	vm.Ip = *a[0]
@@ -356,8 +358,8 @@ func (vm *VM) Decode(p *uint16, verbose bool) (*decodedOp, bool) {
 	}
 	//start := *p
 	o := vm.Mem[*p]
-	dop.Annotation = vm.Annotations[*p]
-	dop.isFunction = vm.Functions[*p]
+	dop.Annotation = vm.meta.Annotations[*p]
+	dop.isFunction = vm.meta.Functions[*p]
 	dop.Codes = append(dop.Codes, o)
 	*p++
 	if o >= uint16(len(Ops)) {
@@ -415,8 +417,15 @@ func (vm *VM) Decode(p *uint16, verbose bool) (*decodedOp, bool) {
 }
 
 func (vm *VM) Run() {
-	sigChan := make(chan os.Signal)
-	signal.Notify(sigChan, syscall.SIGUSR1)
+
+	saveSigChan := make(chan os.Signal, 1)
+	signal.Notify(saveSigChan, syscall.SIGUSR1)
+
+	dbgSigChan := make(chan os.Signal, 1)
+	if vm.Debugging {
+
+		signal.Notify(dbgSigChan, syscall.SIGINT)
+	}
 	vm.Counter = 0
 	vm.ControlChan <- "break"
 	_, ok := <-vm.ControlChan
@@ -427,13 +436,23 @@ func (vm *VM) Run() {
 		vm.Counter++
 		opIp := vm.Ip
 		var err error
-		if vm.BreakOps[vm.Mem[vm.Ip]] || vm.Step || vm.Break[vm.Ip] {
+		var receivedDbgSig bool
+		select {
+		case <-saveSigChan:
+			vm.SaveVM("SIG")
+		case sig := <-dbgSigChan:
+			vm.Printf("SIGNAL RECEIVED %v\n", sig)
+			receivedDbgSig = true
+		default:
+		}
+		if vm.BreakOps[vm.Mem[vm.Ip]] || vm.Step || vm.Break[vm.Ip] || receivedDbgSig {
 			vm.ControlChan <- "break"
 			_, ok := <-vm.ControlChan
 			if !ok {
 				return
 			}
 		}
+		vm.meta.ExecMem[vm.Ip] = true
 		dOp, good := vm.Decode(&vm.Ip, false)
 		if !good {
 			vm.ControlChan <- fmt.Sprintf("bad op %v at %v", dOp.Codes[0], opIp)

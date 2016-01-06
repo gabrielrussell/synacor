@@ -62,6 +62,6 @@ func main() {
 		fmt.Printf("waiting to finish\n")
 		err = v.Finish()
 	}
-	fmt.Printf("program finished %#v after %v instructions\n", err, v.Counter)
+	fmt.Printf("program finished %v after %v instructions\n", err, v.Counter)
 	v.SaveMetadata()
 }
