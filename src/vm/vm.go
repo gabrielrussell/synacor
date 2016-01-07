@@ -407,6 +407,11 @@ func (vm *VM) Decode(p *uint16, verbose bool) (*decodedOp, bool) {
 				}
 			}
 		}
+		if dop.Codes[0] == 17 { // decorate the parameter to call with any annotations on the address
+			if vm.meta.Annotations[*v] != "" {
+				d += "(" + vm.meta.Annotations[*v] + ")"
+			}
+		}
 		dop.Args = append(dop.Args, v)
 		if verbose {
 			dop.ArgsDescription = append(dop.ArgsDescription, d)

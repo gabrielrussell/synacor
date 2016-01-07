@@ -195,6 +195,17 @@ func (vm *VM) Debug() error {
 					}
 
 				}
+			case "binary", "bin":
+				if len(fields) != 2 {
+					vm.Printf("bin[ary] <number>\n")
+					continue replLoop
+				}
+				n, err := strconv.Atoi(fields[1])
+				if err != nil {
+					vm.Printf("bin[ary] <number>\n")
+					continue replLoop
+				}
+				vm.Printf("%016b\n", n)
 			default:
 				vm.Printf("error, no such debugger command: %v\n", fields[0])
 			}
