@@ -163,6 +163,23 @@ func (vm *VM) Debug() error {
 				vm.Registers[r] = uint16(v)
 				dis := vm.Dis(vm.Ip, 1)
 				vm.Printf("%v\n%v\n", dis[0], vm.R())
+			case "m":
+				usage := "m <address> <value>\n"
+				if len(fields) != 3 {
+					vm.Printf(usage)
+					continue replLoop
+				}
+				p, err := strconv.Atoi(fields[1])
+				if err != nil || p > len(vm.Mem) {
+					vm.Printf(usage)
+					continue replLoop
+				}
+				v, err := strconv.Atoi(fields[2])
+				if err != nil {
+					vm.Printf(usage)
+					continue replLoop
+				}
+				vm.Mem[p] = uint16(v)
 			case "string":
 				if len(fields) != 2 {
 					vm.Printf("string <address>\n")
